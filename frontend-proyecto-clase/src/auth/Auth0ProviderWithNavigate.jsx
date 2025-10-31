@@ -17,7 +17,10 @@ const Auth0ProviderWithNavigate = ({ children }) => {
 
   const onRedirectCallback = (appState) => {
     const target = appState?.returnTo ?? "/";
-    navigate(target, { replace: true });
+    navigate("/callback", {
+      replace: true,
+      state: { returnTo: target },
+    });
   };
 
   return (
@@ -27,10 +30,9 @@ const Auth0ProviderWithNavigate = ({ children }) => {
       authorizationParams={{
         redirect_uri: redirectUri,
         audience,
+        prompt: "login",
       }}
       onRedirectCallback={onRedirectCallback}
-      cacheLocation="localstorage"
-      useRefreshTokens
     >
       {children}
     </Auth0Provider>

@@ -1,12 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import Button from "../components/ui/Button.jsx";
+import {
+  clearAuthState,
+  loadAuthMessage,
+  loadReturnTo,
+  rememberAuthMessage,
+  rememberReturnTo,
+} from "../utils/authStorage.js";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-const AUTH_MESSAGE_KEY = "auth.message";
-const AUTH_RETURN_KEY = "auth.returnTo";
 
 const HomePage = () => {
   const location = useLocation();
@@ -18,33 +23,28 @@ const HomePage = () => {
   const [apiError, setApiError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
   const [postLoginPath, setPostLoginPath] = useState("/");
+  const autoLoginTriggeredRef = useRef(false);
 
   useEffect(() => {
-    const storage = typeof window !== "undefined" ? window.sessionStorage : null;
-
     if (location.state?.authMessage) {
       const { authMessage: message, returnTo } = location.state;
       setAuthMessage(message);
-      if (storage) {
-        storage.setItem(AUTH_MESSAGE_KEY, message);
-      }
+      rememberAuthMessage(message);
 
       if (returnTo) {
         setPostLoginPath(returnTo);
-        if (storage) {
-          storage.setItem(AUTH_RETURN_KEY, returnTo);
-        }
-      } else if (storage) {
-        storage.removeItem(AUTH_RETURN_KEY);
+        rememberReturnTo(returnTo);
+      } else {
+        rememberReturnTo(null);
       }
 
       navigate(location.pathname, { replace: true });
       return;
     }
 
-    if (!isAuthenticated && storage) {
-      const storedMessage = storage.getItem(AUTH_MESSAGE_KEY);
-      const storedReturnTo = storage.getItem(AUTH_RETURN_KEY);
+    if (!isAuthenticated) {
+      const storedMessage = loadAuthMessage();
+      const storedReturnTo = loadReturnTo();
 
       if (storedMessage) {
         setAuthMessage(storedMessage);
@@ -60,16 +60,33 @@ const HomePage = () => {
     if (isAuthenticated) {
       setAuthMessage(null);
       setPostLoginPath("/");
-      const storage = typeof window !== "undefined" ? window.sessionStorage : null;
-      if (storage) {
-        storage.removeItem(AUTH_MESSAGE_KEY);
-        storage.removeItem(AUTH_RETURN_KEY);
-      }
+      clearAuthState();
+      autoLoginTriggeredRef.current = false;
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (authMessage || isAuthenticated || isLoading) {
+      return;
+    }
+
+    if (autoLoginTriggeredRef.current) {
+      return;
+    }
+
+    autoLoginTriggeredRef.current = true;
+    loginWithRedirect({
+      appState: { returnTo: postLoginPath },
+      authorizationParams: { prompt: "login" },
+    });
+  }, [authMessage, isAuthenticated, isLoading, loginWithRedirect, postLoginPath]);
+
   const handleLogin = () => {
-    loginWithRedirect({ appState: { returnTo: postLoginPath } });
+    rememberReturnTo(postLoginPath);
+    loginWithRedirect({
+      appState: { returnTo: postLoginPath },
+      authorizationParams: { prompt: "login" },
+    });
   };
 
   const handleTestApi = async () => {
@@ -107,11 +124,11 @@ const HomePage = () => {
     <div className="home-page">
       <section className="hero">
         <div className="hero-card">
-          <h1>Autenticación con Auth0 lista para usar</h1>
+          <h1>Autenticación y autorización con Auth0</h1>
           <p>
-            Este frontend está configurado para redirigirte al Universal Login de Auth0. Ya no
-            es necesario un formulario propio de usuario y contraseña; simplemente inicia sesión
-            y comienza a consumir el API Gateway.
+            Cada visita inicia en el Universal Login de Auth0. Tras autenticarte, el frontend
+            envía tu JWT al API Gateway para que valide tus roles antes de mostrar cualquier
+            información protegida.
           </p>
           {authMessage && (
             <p className="home-auth-message" role="status">
@@ -131,7 +148,7 @@ const HomePage = () => {
             <ol>
               <li>Haz clic en “Conectar con Auth0”.</li>
               <li>Completa el flujo Universal Login.</li>
-              <li>Al volver, podrás consultar tu perfil y llamar al gateway.</li>
+              <li>Espera a que el gateway confirme tu rol y continúa.</li>
             </ol>
           </article>
         </div>
@@ -146,10 +163,10 @@ const HomePage = () => {
           </p>
         </article>
         <article className="card">
-          <h3>Sesión persistente</h3>
+          <h3>Autorización estricta</h3>
           <p>
-            Se habilitó el almacenamiento en LocalStorage con refresh tokens rotativos para
-            conservar la sesión incluso si recargas el navegador.
+            Ningún contenido protegido se muestra hasta que el gateway valide tus permisos con el
+            JWT recibido directamente desde Auth0.
           </p>
         </article>
         <article className="card">

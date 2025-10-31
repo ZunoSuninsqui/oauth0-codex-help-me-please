@@ -1,79 +1,106 @@
 package co.edu.uco.apigatwayservice.config;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
-import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.jwt.*;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.jwt.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
+import org.springframework.security.oauth2.jwt.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.util.StringUtils;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-import reactor.core.publisher.Mono;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
+import reactor.core.publisher.Mono;
 
 @Configuration
 @EnableWebFluxSecurity
-@EnableReactiveMethodSecurity
 public class SecurityConfig {
 
-    // Claim de roles con namespace (Auth0)
-    private static final String ROLES_CLAIM = "https://uco-challenge/roles";
-    private static final String ADMIN_ROLE = "admin";
-    private static final String USER_ROLE  = "usuario";
+    private static final String CUSTOM_ROLES_CLAIM = "https://uco-challenge/roles";
+    private final List<String> allowedOrigins;
 
-    @Value("${auth0.audience}")
-    private String audience;
+    public SecurityConfig(@Value("${web.cors.allowed-origins:}") String corsAllowedOrigins) {
+        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
+            this.allowedOrigins = List.of();
+            return;
+        }
 
-    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
-    private String issuer;
-
-    @Value("${web.cors.allowed-origins}")
-    private String corsAllowedOrigins;
+        this.allowedOrigins = Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
+    }
 
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         return http
-            .csrf(ServerHttpSecurity.CsrfSpec::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .authorizeExchange(exchange -> exchange
-                .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()       // preflights
-                .pathMatchers("/api/public/**").permitAll()
-                .pathMatchers("/debug/whoami").authenticated()             // diagnóstico
-                .pathMatchers("/api/admin/**").hasAuthority(ADMIN_ROLE)
-                .pathMatchers("/api/user/**").hasAnyAuthority(ADMIN_ROLE, USER_ROLE)
-                .anyExchange().authenticated()
-            )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt
-                    .jwtDecoder(jwtDecoder())                              // ReactiveJwtDecoder
-                    .jwtAuthenticationConverter(jwtAuthenticationConverter())
-                )
-            )
-            .build();
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(Customizer.withDefaults())
+                .authorizeExchange(exchange -> exchange
+                        .pathMatchers(HttpMethod.OPTIONS).permitAll()
+                        .pathMatchers("/actuator/**").permitAll()
+                        .pathMatchers("/debug/**").authenticated()
+                        .pathMatchers("/api/admin/**").hasRole("admin")
+                        .anyExchange().authenticated())
+                .oauth2ResourceServer(resourceServer -> resourceServer
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                .build();
     }
 
     @Bean
-    CorsConfigurationSource corsConfigurationSource() {
+    public ReactiveJwtDecoder reactiveJwtDecoder(
+            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
+            @Value("${auth0.audience}") String audience) {
+        NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuer).build();
+
+        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuer);
+        OAuth2TokenValidator<Jwt> withAudience = token -> {
+            if (token.getAudience().contains(audience)) {
+                return OAuth2TokenValidatorResult.success();
+            }
+            OAuth2Error error = new OAuth2Error("invalid_token", "El token no contiene el audience configurado", null);
+            return OAuth2TokenValidatorResult.failure(error);
+        };
+
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(withIssuer, withAudience));
+        return decoder;
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(parseAllowedOrigins());
-        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS", "HEAD"));
+        if (allowedOrigins.isEmpty()) {
+            config.addAllowedOriginPattern("*");
+        } else {
+            config.setAllowedOrigins(allowedOrigins);
+        }
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("Authorization", "X-Get-Header"));
         config.setAllowCredentials(true);
-        config.setAllowedHeaders(List.of("*"));           // Auth0 manda varios headers
-        config.setExposedHeaders(List.of("X-Get-Header"));
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -81,43 +108,29 @@ public class SecurityConfig {
         return source;
     }
 
-    private List<String> parseAllowedOrigins() {
-        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(corsAllowedOrigins.split(","))
-            .map(String::trim)
-            .filter(origin -> !origin.isBlank())
-            .collect(Collectors.toList());
-    }
+    private Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthenticationConverter() {
+        ReactiveJwtAuthenticationConverter delegate = new ReactiveJwtAuthenticationConverter();
+        JwtGrantedAuthoritiesConverter scopesConverter = new JwtGrantedAuthoritiesConverter();
 
-    /**
-     * ReactiveJwtDecoder: envolvemos NimbusJwtDecoder para WebFlux
-     * y mantenemos validación de issuer + audience.
-     */
-    @Bean
-    public ReactiveJwtDecoder jwtDecoder() {
-        NimbusJwtDecoder nimbus = (NimbusJwtDecoder) JwtDecoders.fromOidcIssuerLocation(issuer);
+        delegate.setJwtGrantedAuthoritiesConverter(jwt -> {
+            Collection<GrantedAuthority> authorities = new ArrayList<>();
+            Collection<GrantedAuthority> scopeAuthorities = scopesConverter.convert(jwt);
+            if (scopeAuthorities != null) {
+                authorities.addAll(scopeAuthorities);
+            }
 
-        OAuth2TokenValidator<Jwt> withIssuer   = JwtValidators.createDefaultWithIssuer(issuer);
-        OAuth2TokenValidator<Jwt> withAudience = new DelegatingOAuth2TokenValidator<>(withIssuer, new AudienceValidator(audience));
-        nimbus.setJwtValidator(withAudience);
+            List<String> roles = jwt.getClaimAsStringList(CUSTOM_ROLES_CLAIM);
+            if (roles != null) {
+                roles.stream()
+                        .filter(StringUtils::hasText)
+                        .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
+                        .map(SimpleGrantedAuthority::new)
+                        .forEach(authorities::add);
+            }
 
-        return token -> Mono.fromCallable(() -> nimbus.decode(token));
-    }
+            return authorities;
+        });
 
-    /**
-     * Convierte el claim de roles (namespace) en authorities sin prefijo "ROLE_".
-     */
-    @Bean
-    public Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        authoritiesConverter.setAuthoritiesClaimName(ROLES_CLAIM);
-        authoritiesConverter.setAuthorityPrefix(""); // sin "ROLE_"
-
-        JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
-        jwtConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
-
-        return new ReactiveJwtAuthenticationConverterAdapter(jwtConverter);
+        return new ReactiveJwtAuthenticationConverterAdapter(delegate);
     }
 }

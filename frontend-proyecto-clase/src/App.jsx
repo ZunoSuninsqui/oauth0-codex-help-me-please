@@ -5,6 +5,7 @@ import CallbackPage from "./pages/CallbackPage.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
 
 const App = () => {
   return (
@@ -17,6 +18,14 @@ const App = () => {
           element={
             <ProtectedRoute>
               <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
             </ProtectedRoute>
           }
         />

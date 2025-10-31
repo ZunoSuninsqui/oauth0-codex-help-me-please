@@ -1,19 +1,75 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import Button from "../components/ui/Button.jsx";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const AUTH_MESSAGE_KEY = "auth.message";
+const AUTH_RETURN_KEY = "auth.returnTo";
 
 const HomePage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { isAuthenticated, loginWithRedirect, getAccessTokenSilently, isLoading, error } =
     useAuth0();
   const [apiState, setApiState] = useState("idle");
   const [apiResponse, setApiResponse] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [authMessage, setAuthMessage] = useState(null);
+  const [postLoginPath, setPostLoginPath] = useState("/");
+
+  useEffect(() => {
+    const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+
+    if (location.state?.authMessage) {
+      const { authMessage: message, returnTo } = location.state;
+      setAuthMessage(message);
+      if (storage) {
+        storage.setItem(AUTH_MESSAGE_KEY, message);
+      }
+
+      if (returnTo) {
+        setPostLoginPath(returnTo);
+        if (storage) {
+          storage.setItem(AUTH_RETURN_KEY, returnTo);
+        }
+      } else if (storage) {
+        storage.removeItem(AUTH_RETURN_KEY);
+      }
+
+      navigate(location.pathname, { replace: true });
+      return;
+    }
+
+    if (!isAuthenticated && storage) {
+      const storedMessage = storage.getItem(AUTH_MESSAGE_KEY);
+      const storedReturnTo = storage.getItem(AUTH_RETURN_KEY);
+
+      if (storedMessage) {
+        setAuthMessage(storedMessage);
+      }
+
+      if (storedReturnTo) {
+        setPostLoginPath(storedReturnTo);
+      }
+    }
+  }, [isAuthenticated, location, navigate]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setAuthMessage(null);
+      setPostLoginPath("/");
+      const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+      if (storage) {
+        storage.removeItem(AUTH_MESSAGE_KEY);
+        storage.removeItem(AUTH_RETURN_KEY);
+      }
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = () => {
-    loginWithRedirect({ appState: { returnTo: "/" } });
+    loginWithRedirect({ appState: { returnTo: postLoginPath } });
   };
 
   const handleTestApi = async () => {
@@ -57,6 +113,11 @@ const HomePage = () => {
             es necesario un formulario propio de usuario y contraseña; simplemente inicia sesión
             y comienza a consumir el API Gateway.
           </p>
+          {authMessage && (
+            <p className="home-auth-message" role="status">
+              {authMessage}
+            </p>
+          )}
           {!isAuthenticated && (
             <Button onClick={handleLogin} disabled={isLoading}>
               {isLoading ? "Preparando Auth0..." : "Conectar con Auth0"}

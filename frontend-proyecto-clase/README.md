@@ -1,6 +1,6 @@
 # Frontend Auth0 - UCO Challenge
 
-Este proyecto es una SPA creada con React + Vite que usa Auth0 como proveedor de identidad. El objetivo es consumir el API Gateway protegido sin mantener formularios propios de usuario y contraseña y validar el rol `admin` emitido por Auth0.
+Este proyecto es una SPA creada con React + Vite que usa Auth0 como proveedor de identidad. El objetivo es consumir el API Gateway protegido sin mantener formularios propios de usuario y contraseña.
 
 ## Configuración
 
@@ -14,7 +14,7 @@ VITE_AUTH0_AUDIENCE=https://spring-boot-auth0-integration
 VITE_API_BASE_URL=http://localhost:8080
 ```
 
-> `VITE_API_BASE_URL` es necesario para usar el dashboard administrativo. Se llama a `${VITE_API_BASE_URL}/api/admin/dashboard` con el token JWT obtenido desde Auth0 para que el gateway confirme el rol `admin`.
+> `VITE_API_BASE_URL` es opcional. Si lo defines, el botón “Llamar al gateway” hará una petición a `${VITE_API_BASE_URL}/debug/whoami` usando el token emitido por Auth0.
 
 Instala dependencias y levanta el entorno de desarrollo:
 
@@ -28,16 +28,7 @@ npm run dev
 - Redirección al Universal Login de Auth0 (sin formularios personalizados).
 - Sesión persistente mediante `cacheLocation="localstorage"` y refresh tokens rotativos.
 - Página de perfil que muestra los claims del usuario conectado.
-- Validación automática del rol `admin`: sólo quienes lo tengan podrán entrar al dashboard.
-- Redirección al inicio con el mensaje “No puedes continuar porque no tienes el rol adecuado” para usuarios autenticados sin el rol requerido.
 - Botón de prueba para invocar el gateway protegido con el access token vigente.
-
-## Flujo de autorización con el API Gateway
-
-1. Inicia sesión mediante Auth0 (Universal Login).
-2. Si tu usuario posee el rol `admin` en el claim personalizado `https://uco-challenge/roles`, verás el botón “Ir al dashboard”.
-3. Al entrar a `/dashboard`, el frontend solicita un access token con `audience = VITE_AUTH0_AUDIENCE` y lo envía en la cabecera `Authorization` hacia `${VITE_API_BASE_URL}/api/admin/dashboard`.
-4. El API Gateway valida el JWT, verifica el rol y devuelve la respuesta del dashboard. Si la verificación falla (403), el frontend vuelve al inicio y muestra el mensaje “No puedes continuar porque no tienes el rol adecuado”.
 
 ## Estructura
 

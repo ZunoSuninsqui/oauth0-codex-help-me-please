@@ -155,25 +155,6 @@ a:hover {
   box-shadow: 0 12px 20px -15px rgba(15, 23, 42, 0.5);
 }
 
-.alert {
-  border-radius: 16px;
-  padding: 0.75rem 1rem;
-  margin: 0.5rem 0 1.25rem;
-  font-weight: 500;
-}
-
-.alert-warning {
-  background: rgba(250, 204, 21, 0.18);
-  color: #854d0e;
-  border: 1px solid rgba(250, 204, 21, 0.45);
-}
-
-.alert-error {
-  background: rgba(248, 113, 113, 0.18);
-  color: #7f1d1d;
-  border: 1px solid rgba(248, 113, 113, 0.45);
-}
-
 .home-page {
   display: flex;
   flex-direction: column;
@@ -319,43 +300,6 @@ a:hover {
   margin: 0;
   color: #334155;
   word-break: break-word;
-}
-
-.dashboard-page {
-  display: flex;
-  justify-content: center;
-}
-
-.dashboard-card {
-  width: min(720px, 90vw);
-  background: rgba(248, 250, 252, 0.97);
-  border-radius: 24px;
-  padding: 2.5rem;
-  box-shadow: 0 40px 60px -40px rgba(15, 23, 42, 0.35);
-}
-
-.dashboard-card h1 {
-  margin-top: 0;
-  margin-bottom: 0.75rem;
-}
-
-.dashboard-lead {
-  margin-top: 0;
-  color: #1e3a8a;
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  padding: 1rem 1.25rem;
-  border-radius: 16px;
-}
-
-.dashboard-payload {
-  background: rgba(15, 23, 42, 0.85);
-  color: #e2e8f0;
-  border-radius: 18px;
-  padding: 1.25rem;
-  overflow: auto;
-  margin-top: 1.5rem;
-  font-size: 0.9rem;
 }
 
 @keyframes spin {

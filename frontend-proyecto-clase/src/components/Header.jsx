@@ -2,11 +2,9 @@ import { Link, NavLink } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 
 import Button from "./ui/Button.jsx";
-import { userHasRole } from "../utils/auth0.js";
 
 const Header = () => {
   const { isAuthenticated, loginWithRedirect, logout, user } = useAuth0();
-  const isAdmin = userHasRole(user, "admin");
 
   const handleLogin = () => {
     loginWithRedirect({ appState: { returnTo: "/" } });
@@ -29,11 +27,6 @@ const Header = () => {
           {isAuthenticated && (
             <NavLink to="/profile">
               Perfil
-            </NavLink>
-          )}
-          {isAuthenticated && isAdmin && (
-            <NavLink to="/dashboard">
-              Dashboard
             </NavLink>
           )}
         </nav>

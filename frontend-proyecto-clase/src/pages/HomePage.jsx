@@ -1,43 +1,19 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useNavigate } from "react-router-dom";
 
 import Button from "../components/ui/Button.jsx";
-import { userHasRole } from "../utils/auth0.js";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 const HomePage = () => {
-  const {
-    isAuthenticated,
-    loginWithRedirect,
-    getAccessTokenSilently,
-    isLoading,
-    error,
-    user,
-  } = useAuth0();
-  const navigate = useNavigate();
+  const { isAuthenticated, loginWithRedirect, getAccessTokenSilently, isLoading, error } =
+    useAuth0();
   const [apiState, setApiState] = useState("idle");
   const [apiResponse, setApiResponse] = useState(null);
   const [apiError, setApiError] = useState(null);
-  const [authMessage, setAuthMessage] = useState("");
-
-  const isAdmin = userHasRole(user, "admin");
 
   const handleLogin = () => {
     loginWithRedirect({ appState: { returnTo: "/" } });
-  };
-
-  useEffect(() => {
-    if (isAuthenticated && !isAdmin) {
-      setAuthMessage("No puedes continuar porque no tienes el rol adecuado");
-    } else {
-      setAuthMessage("");
-    }
-  }, [isAuthenticated, isAdmin]);
-
-  const handleOpenDashboard = () => {
-    navigate("/dashboard");
   };
 
   const handleTestApi = async () => {
@@ -81,14 +57,10 @@ const HomePage = () => {
             es necesario un formulario propio de usuario y contraseña; simplemente inicia sesión
             y comienza a consumir el API Gateway.
           </p>
-          {authMessage && <p className="alert alert-warning">{authMessage}</p>}
           {!isAuthenticated && (
             <Button onClick={handleLogin} disabled={isLoading}>
               {isLoading ? "Preparando Auth0..." : "Conectar con Auth0"}
             </Button>
-          )}
-          {isAuthenticated && isAdmin && (
-            <Button onClick={handleOpenDashboard}>Ir al dashboard</Button>
           )}
           {error && <p className="form-error">{error.message}</p>}
         </div>
@@ -118,8 +90,8 @@ const HomePage = () => {
             Se habilitó el almacenamiento en LocalStorage con refresh tokens rotativos para
             conservar la sesión incluso si recargas el navegador.
           </p>
-       </article>
-       <article className="card">
+        </article>
+        <article className="card">
           <h3>Prueba tu gateway</h3>
           <p>
             Configura la variable <code>VITE_API_BASE_URL</code> y prueba el endpoint seguro desde

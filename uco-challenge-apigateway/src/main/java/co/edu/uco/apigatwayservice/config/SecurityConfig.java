@@ -1,136 +1,75 @@
 package co.edu.uco.apigatwayservice.config;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.jwt.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
-import org.springframework.security.oauth2.jwt.OAuth2TokenValidator;
-import org.springframework.security.oauth2.jwt.OAuth2TokenValidatorResult;
-import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
-import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.util.StringUtils;
-import org.springframework.core.convert.converter.Converter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-
-import reactor.core.publisher.Mono;
 
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
-    private static final String CUSTOM_ROLES_CLAIM = "https://uco-challenge/roles";
-    private final List<String> allowedOrigins;
+        private final List<String> allowedOrigins;
 
-    public SecurityConfig(@Value("${web.cors.allowed-origins:}") String corsAllowedOrigins) {
-        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
-            this.allowedOrigins = List.of();
-            return;
+        public SecurityConfig(@Value("${web.cors.allowed-origins:*}") String allowedOrigins) {
+                this.allowedOrigins = parseAllowedOrigins(allowedOrigins);
         }
 
-        this.allowedOrigins = Arrays.stream(corsAllowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isBlank())
-                .toList();
-    }
-
-    @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http
-                .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(Customizer.withDefaults())
-                .authorizeExchange(exchange -> exchange
-                        .pathMatchers(HttpMethod.OPTIONS).permitAll()
-                        .pathMatchers("/actuator/**").permitAll()
-                        .pathMatchers("/debug/**").authenticated()
-                        .pathMatchers("/api/admin/**").hasRole("admin")
-                        .anyExchange().authenticated())
-                .oauth2ResourceServer(resourceServer -> resourceServer
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
-                .build();
-    }
-
-    @Bean
-    public ReactiveJwtDecoder reactiveJwtDecoder(
-            @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
-            @Value("${auth0.audience}") String audience) {
-        NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuer).build();
-
-        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuer);
-        OAuth2TokenValidator<Jwt> withAudience = token -> {
-            if (token.getAudience().contains(audience)) {
-                return OAuth2TokenValidatorResult.success();
-            }
-            OAuth2Error error = new OAuth2Error("invalid_token", "El token no contiene el audience configurado", null);
-            return OAuth2TokenValidatorResult.failure(error);
-        };
-
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(withIssuer, withAudience));
-        return decoder;
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        if (allowedOrigins.isEmpty()) {
-            config.addAllowedOriginPattern("*");
-        } else {
-            config.setAllowedOrigins(allowedOrigins);
+        @Bean
+        public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+                return http
+                                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .authorizeExchange(exchanges -> exchanges
+                                                .pathMatchers(HttpMethod.OPTIONS).permitAll()
+                                                .pathMatchers("/actuator/**").permitAll()
+                                                .pathMatchers("/auth/authorize").authenticated()
+                                                .anyExchange().authenticated())
+                                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                                .build();
         }
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization", "X-Get-Header"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                if (allowedOrigins.isEmpty() || allowedOrigins.contains("*")) {
+                        configuration.addAllowedOriginPattern("*");
+                } else {
+                        configuration.setAllowedOrigins(allowedOrigins);
+                }
+                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+                configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
+                configuration.setExposedHeaders(List.of("Authorization"));
+                configuration.setAllowCredentials(true);
 
-    private Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthenticationConverter() {
-        ReactiveJwtAuthenticationConverter delegate = new ReactiveJwtAuthenticationConverter();
-        JwtGrantedAuthoritiesConverter scopesConverter = new JwtGrantedAuthoritiesConverter();
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/**", configuration);
+                return source;
+        }
 
-        delegate.setJwtGrantedAuthoritiesConverter(jwt -> {
-            Collection<GrantedAuthority> authorities = new ArrayList<>();
-            Collection<GrantedAuthority> scopeAuthorities = scopesConverter.convert(jwt);
-            if (scopeAuthorities != null) {
-                authorities.addAll(scopeAuthorities);
-            }
+        private List<String> parseAllowedOrigins(String configuredOrigins) {
+                if (configuredOrigins == null || configuredOrigins.isBlank()) {
+                        return List.of();
+                }
 
-            List<String> roles = jwt.getClaimAsStringList(CUSTOM_ROLES_CLAIM);
-            if (roles != null) {
-                roles.stream()
-                        .filter(StringUtils::hasText)
-                        .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
-                        .map(SimpleGrantedAuthority::new)
-                        .forEach(authorities::add);
-            }
+                Set<String> uniqueOrigins = Arrays.stream(configuredOrigins.split(","))
+                                .map(String::trim)
+                                .filter(origin -> !origin.isEmpty())
+                                .collect(Collectors.toCollection(LinkedHashSet::new));
 
-            return authorities;
-        });
-
-        return new ReactiveJwtAuthenticationConverterAdapter(delegate);
-    }
+                return List.copyOf(uniqueOrigins);
+        }
 }

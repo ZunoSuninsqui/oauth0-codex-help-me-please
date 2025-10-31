@@ -2,16 +2,22 @@ import { Link, NavLink } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 
 import Button from "./ui/Button.jsx";
-import { userHasRole } from "../utils/auth0.js";
+import { useAuthorization } from "../context/AuthorizationContext.jsx";
+import { loadReturnTo, rememberReturnTo } from "../utils/authStorage.js";
 
 const Header = () => {
   const { isAuthenticated, loginWithRedirect, logout, user } = useAuth0();
-  const canAccessDashboard = userHasRole(user, "admin");
+  const { status: authorizationStatus, roles } = useAuthorization();
+  const canAccessDashboard =
+    authorizationStatus === "authorized" && Array.isArray(roles) && roles.includes("admin");
 
   const handleLogin = () => {
-    const storage = typeof window !== "undefined" ? window.sessionStorage : null;
-    const returnTo = storage?.getItem("auth.returnTo") ?? "/";
-    loginWithRedirect({ appState: { returnTo } });
+    const returnTo = loadReturnTo();
+    rememberReturnTo(returnTo);
+    loginWithRedirect({
+      appState: { returnTo },
+      authorizationParams: { prompt: "login" },
+    });
   };
 
   const handleLogout = () => {
